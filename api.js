@@ -2,13 +2,21 @@
 // ALL FUNCTIONS REQUIRE A PAYLOAD
 const axios = require("axios");
 const moment = require("moment");
+const papa = require("papaparse");
 
 const BLUE_ALLIANCE_CONFIG = {
   "X-TBA-Auth-Key": process.env.BLUE_ALLIANCE_API_KEY
 };
-let DEFAULT_PREFIX = process.env.PREFIX;
 
 const REQUEST_HEADER = { headers: BLUE_ALLIANCE_CONFIG, validateStatus: false };
+
+var getGoogleSheet = async sheet => {
+  console.log(sheet);
+  var res;
+  res = await axios.get(sheet);
+  // console.log(papa.parse(res.data));
+  return papa.parse(res.data).data[1];
+};
 
 var getYoMommaJoke = async () => {
   const payload = {
@@ -22,13 +30,61 @@ var getYoMommaJoke = async () => {
 
 var getPrevMatch = async team => {
   //Gets the last match statistics and displays it
-
-  return "next";
+  const payload = {
+    status: "OK",
+    data: "empty"
+  };
+  var recent = moment(0),
+    now = moment();
+  var res,
+    teamKey = "frc" + team;
+  res = await getPrevEvent(team);
+  console.log(res.data.key);
+  res = await axios.get(
+    `https://www.thebluealliance.com/api/v3/team/${teamKey}/event/${res.data.key}/matches`,
+    REQUEST_HEADER
+  );
+  if (res.data.Errors) {
+    return handleError(res.data.Errors);
+  }
+  for (const match of res.data) {
+    var matchTime = moment.unix(match.actual_time);
+    if (matchTime > recent) {
+      recent = matchTime;
+      payload.data = match;
+    }
+  }
+  return payload;
 };
 
 var getNextMatch = async team => {
   //Gets the next upcomming match statistics and displays it
   // should also integrate with custom google sheets
+  const payload = {
+    status: "OK",
+    data: "empty"
+  };
+  var recent = moment(0),
+    now = moment();
+  var res,
+    teamKey = "frc" + team;
+  res = await getNextEvent(team);
+  console.log(res.data.key);
+  res = await axios.get(
+    `https://www.thebluealliance.com/api/v3/team/${teamKey}/event/${res.data.key}/matches`,
+    REQUEST_HEADER
+  );
+  if (res.data.Errors) {
+    return handleError(res.data.Errors);
+  }
+  for (const match of res.data) {
+    var matchTime = moment.unix(match.time);
+    if (matchTime - now < recent && matchTime > now) {
+      recent = matchTime;
+      payload.data = match;
+    }
+  }
+  return payload;
 };
 
 var getPrevEvent = async team => {
@@ -57,7 +113,15 @@ var getPrevEvent = async team => {
     }
   }
   console.log(closestEvent);
-  payload.data = getEvent(closestEvent);
+  payload.data = await getEvent(closestEvent);
+  res = await axios.get(
+    `https://www.thebluealliance.com/api/v3/team/${teamKey}/event/${payload.data.key}/matches`,
+    REQUEST_HEADER
+  );
+  if (res.data.Errors) {
+    return handleError(res.data.Errors);
+  }
+  payload.data.win = checkWin(teamKey, res.data);
   return payload;
 };
 var getNextEvent = async team => {
@@ -80,14 +144,18 @@ var getNextEvent = async team => {
   }
   for (const event of res.data) {
     let startDate = moment(event.start_date);
-    if (startDate - now < closestEventTime && startDate > now) {
+    let endDate = moment(event.end_date);
+    if (
+      (startDate - now < closestEventTime && startDate > now) ||
+      (startDate < now && now < endDate)
+    ) {
       closestEventTime = startDate - now;
       closestEvent = event.key;
     }
   }
   console.log(closestEvent);
 
-  payload.data = getEvent(closestEvent);
+  payload.data = await getEvent(closestEvent);
   return payload;
 };
 
@@ -102,51 +170,8 @@ var getEvent = async eventID => {
     return handleError(res.data.Errors);
   }
   const event = res.data;
-  let params = {
-    blocks: [
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: `${event.name}`
-        }
-      },
-      {
-        type: "divider"
-      },
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: `*<${event.gmaps_url}|${event.location_name}>*\n ⌛ ${moment(
-            event.start_date
-          ).format("LL")}\n  🔗 <${event.website}|Website>\n 🏆 ${
-            event.event_type_string
-          } event`
-        },
-        accessory: {
-          type: "image",
-          image_url:
-            "https://img.icons8.com/plasticine/200/000000/google-maps.png",
-          alt_text: "map icon"
-        }
-      },
 
-      {
-        type: "divider"
-      },
-      {
-        type: "context",
-        elements: [
-          {
-            type: "mrkdwn",
-            text: `❓Get help at any time with \`${DEFAULT_PREFIX} help\``
-          }
-        ]
-      }
-    ]
-  };
-  return params;
+  return event;
 };
 
 var getWinLoss = async (team, year) => {
@@ -212,6 +237,7 @@ var getWinLoss = async (team, year) => {
 };
 
 var checkWin = (teamKey, matches) => {
+  // given an array of matches, return win, loss, and # of matches played
   let win = 0,
     loss = 0;
   for (const match of matches) {
@@ -247,5 +273,6 @@ module.exports = {
   getNextEvent,
   getPrevEvent,
   getNextMatch,
-  getPrevMatch
+  getPrevMatch,
+  getGoogleSheet
 };

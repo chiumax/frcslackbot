@@ -1,7 +1,9 @@
 require("dotenv").config();
 
 let DEFAULT_PREFIX = process.env.PREFIX;
-let DEFAULT_TEAM;
+let DEFAULT_TEAM,
+  DEFAULT_SHEET =
+    "https://docs.google.com/spreadsheets/d/e/2PACX-1vQuO5uzyhF6NjaNU1E3l9Gwqxi4b4qklsodLWuEuJ_SqMDr2wvA1-cEU1IYRrOMxlAPG6lPkhIeE0vr/pub?gid=1216391683&single=true&output=csv";
 const SlackBot = require("slackbots");
 const axios = require("axios");
 const moment = require("moment");
@@ -68,6 +70,7 @@ app.on("start", () => {
       }
     ]
   };
+
   app.postMessageToChannel("general", "What's up laddies!", params);
 });
 
@@ -127,6 +130,12 @@ var handleMessage = async message => {
 
       case "prefix":
         outMsg = await setPrefix(PARAMETER);
+        break;
+      case "sheet":
+        outMsg = await sheet(PARAMETER);
+        break;
+      case "setSheet":
+        outMsg = await setSheet(PARAMETER);
         break;
 
       default:
@@ -198,6 +207,14 @@ var helpMsg = () => {
         text: {
           type: "mrkdwn",
           text:
+            "*setSheet [url]*\n `url` is *required*.\n Sets the `defaultSheet` for this bot"
+        }
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text:
             "*next [team]*\n `team` defaults to current `defaultTeam`.\n Gets the upcoming match"
         }
       },
@@ -238,6 +255,14 @@ var helpMsg = () => {
         type: "section",
         text: {
           type: "mrkdwn",
+          text:
+            "*sheet [url]*\n `url` defaults to current `defaultSheet`.\n Returns first 4 cells of the second row."
+        }
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
           text: "*yomomma*\nHaha, funny joke."
         }
       },
@@ -258,40 +283,263 @@ var helpMsg = () => {
   return params;
 };
 
+var sheet = async (url = DEFAULT_SHEET) => {
+  if (url[0] == "<") {
+    url = url.substring(1, url.length - 1);
+    url = url.replace(/&amp;/g, "&");
+  }
+
+  let res = await api.getGoogleSheet(url);
+  console.log(res);
+  return `${res[0]}, ${res[1]}, ${res[2]}, ${res[3]}`;
+};
+
 var yoMommaJoke = async () => {
-  const joke = await api.getYoMommaJoke;
-  return joke;
+  const joke = await api.getYoMommaJoke();
+  return joke.data;
 };
 
 var prevMatch = async (team = DEFAULT_TEAM) => {
-  return;
+  const payload = await api.getPrevMatch(team);
+  const match = payload.data;
+
+  if (payload.data == undefined) {
+    return "No match data found";
+  }
+  if (payload.status == "OK") {
+    const params = {
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `${"https://www.youtube.com/watch?v=" + match.videos[0].key}`
+          }
+        },
+        { type: "divider" }
+      ],
+      attachments: [
+        {
+          fallback: "",
+          color: "#FF451D",
+          pretext: `Score: ${match.alliances.red.score}`,
+          author_name: "Red Alliance",
+          fields: [
+            {
+              title: `${match.alliances.red.team_keys[0].substring(3)}`,
+              short: false
+            },
+            {
+              title: `${match.alliances.red.team_keys[1].substring(3)}`,
+              short: false
+            },
+            {
+              title: `${match.alliances.red.team_keys[2].substring(3)}`,
+              short: false
+            }
+          ]
+        },
+        {
+          fallback: "",
+          color: "#1851F5",
+          pretext: `Score: ${match.alliances.blue.score}`,
+          author_name: "Blue Alliance",
+
+          fields: [
+            {
+              title: `${match.alliances.blue.team_keys[0].substring(3)}`,
+              short: false
+            },
+            {
+              title: `${match.alliances.blue.team_keys[1].substring(3)}`,
+              short: false
+            },
+            {
+              title: `${match.alliances.blue.team_keys[2].substring(3)}`,
+              short: false
+            }
+          ]
+        }
+      ]
+    };
+    return params;
+  } else {
+    return handleError(payload.data);
+  }
 };
 var nextMatch = async (team = DEFAULT_TEAM) => {
-  return;
+  const payload = await api.getNextMatch(team);
+  const match = payload.data;
+  console.log(payload.data);
+
+  if (payload.data == "empty") {
+    return "No match data found";
+  }
+  if (payload.status == "OK") {
+    const params = {
+      attachments: [
+        {
+          fallback: "",
+          color: "#FF451D",
+
+          author_name: "Red Alliance",
+          fields: [
+            {
+              title: `${match.alliances.red.team_keys[0].substring(3)}`,
+              short: false
+            },
+            {
+              title: `${match.alliances.red.team_keys[1].substring(3)}`,
+              short: false
+            },
+            {
+              title: `${match.alliances.red.team_keys[2].substring(3)}`,
+              short: false
+            }
+          ]
+        },
+        {
+          fallback: "",
+          color: "#1851F5",
+
+          author_name: "Blue Alliance",
+
+          fields: [
+            {
+              title: `${match.alliances.blue.team_keys[0].substring(3)}`,
+              short: false
+            },
+            {
+              title: `${match.alliances.blue.team_keys[1].substring(3)}`,
+              short: false
+            },
+            {
+              title: `${match.alliances.blue.team_keys[2].substring(3)}`,
+              short: false
+            }
+          ]
+        }
+      ]
+    };
+    return params;
+  } else {
+    return handleError(payload.data);
+  }
 };
 var prevEvent = async (team = DEFAULT_TEAM) => {
   const payload = await api.getPrevEvent(team);
+  const event = payload.data;
+  console.log(payload.data.win);
+  let params = {
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `${event.name}`
+        }
+      },
+      {
+        type: "divider"
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `*<${event.gmaps_url}|${event.location_name}>*\n ⌛ ${moment(
+            event.start_date
+          ).format("LL")}\n  🔗 <${event.website}|Website>\n 🏆 ${
+            event.event_type_string
+          } event\n ✔️ Win ${event.win[0]}\n ❌ Loss ${event.win[1]}\n `
+        },
+        accessory: {
+          type: "image",
+          image_url:
+            "https://img.icons8.com/plasticine/200/000000/google-maps.png",
+          alt_text: "map icon"
+        }
+      },
+
+      {
+        type: "divider"
+      },
+      {
+        type: "context",
+        elements: [
+          {
+            type: "mrkdwn",
+            text: `❓Get help at any time with \`${DEFAULT_PREFIX} help\``
+          }
+        ]
+      }
+    ]
+  };
   if (payload.status == "OK") {
-    return payload.data;
+    return params;
   } else {
     return handleError(payload.data);
   }
 };
 var nextEvent = async (team = DEFAULT_TEAM) => {
   const payload = await api.getNextEvent(team);
+  const event = payload.data;
+  let params = {
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `${event.name}`
+        }
+      },
+      {
+        type: "divider"
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `*<${event.gmaps_url}|${event.location_name}>*\n ⌛ ${moment(
+            event.start_date
+          ).format("LL")}\n  🔗 <${event.website}|Website>\n 🏆 ${
+            event.event_type_string
+          } event`
+        },
+        accessory: {
+          type: "image",
+          image_url:
+            "https://img.icons8.com/plasticine/200/000000/google-maps.png",
+          alt_text: "map icon"
+        }
+      },
+
+      {
+        type: "divider"
+      },
+      {
+        type: "context",
+        elements: [
+          {
+            type: "mrkdwn",
+            text: `❓Get help at any time with \`${DEFAULT_PREFIX} help\``
+          }
+        ]
+      }
+    ]
+  };
   if (payload.status == "OK") {
-    return payload.data;
+    return params;
   } else {
     return handleError(payload.data);
   }
 };
 var winLoss = async (team = DEFAULT_TEAM, year = "all") => {
- const payload = await api.getWinLoss(team,year);
- if(payload.status == "OK"){
-     return payload.data;
- } else {
-     return handleError(payload.data);
- }
+  const payload = await api.getWinLoss(team, year);
+  if (payload.status == "OK") {
+    return payload.data;
+  } else {
+    return handleError(payload.data);
+  }
 };
 
 // Setters
@@ -307,6 +555,15 @@ var setPrefix = prefix => {
 var setDEFAULT_TEAM = team => {
   DEFAULT_TEAM = team;
   return `Success! \`defaultTeam\` set to '${team}'`;
+};
+
+var setSheet = url => {
+  if (url[0] == "<") {
+    url = url.substring(1, url.length - 1);
+    url = url.replace(/&amp;/g, "&");
+  }
+  DEFAULT_SHEET = url;
+  return `Success! \`defaultSheet\` set to '${url}'`;
 };
 
 // Error handling
