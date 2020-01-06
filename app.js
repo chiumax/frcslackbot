@@ -1,13 +1,17 @@
 require("dotenv").config();
 
-let DEFAULTPREFIX = process.env.PREFIX;
-let DEFAULTTEAM;
+let DEFAULT_PREFIX = process.env.PREFIX;
+let DEFAULT_TEAM;
 const SlackBot = require("slackbots");
 const axios = require("axios");
+const moment = require("moment");
+const api = require("./api.js");
 
 const BLUE_ALLIANCE_CONFIG = {
   "X-TBA-Auth-Key": process.env.BLUE_ALLIANCE_API_KEY
 };
+
+const REQUEST_HEADER = { headers: BLUE_ALLIANCE_CONFIG, validateStatus: false };
 
 const app = new SlackBot({
   token: process.env.TOKEN,
@@ -19,7 +23,50 @@ app.on("start", () => {
   console.log(process.env.BOT_NAME + " is now online!");
 
   const params = {
-    icon_emoji: ":smiley:"
+    icon_emoji: ":smiley:",
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: "Hey there 👋 I'm Upcoming Matches Bot."
+        }
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `*1️⃣ Use the \`${DEFAULT_PREFIX} help\` command*. This will display a list of all functions and how to use them.`
+        }
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `*2️⃣ I'm fun too!* Try out \`${DEFAULT_PREFIX} yomomma\` and see what happens!`
+        }
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text:
+            "*3️⃣ If anything breaks...* Knock up Max on Slack if anything is wrong with me."
+        }
+      },
+      {
+        type: "divider"
+      },
+      {
+        type: "context",
+        elements: [
+          {
+            type: "mrkdwn",
+            text: `❓Get help at any time with \`${DEFAULT_PREFIX} help\``
+          }
+        ]
+      }
+    ]
   };
   app.postMessageToChannel("general", "What's up laddies!", params);
 });
@@ -41,46 +88,56 @@ var handleMessage = async message => {
   const PREFIX = message[0];
   const COMMAND = message[1];
   const PARAMETER = message[2];
+  const PARAMETER2 = message[3];
   console.log("handle message");
 
-  if (PREFIX == DEFAULTPREFIX) {
+  if (PREFIX == DEFAULT_PREFIX) {
     switch (COMMAND) {
       case "help":
-        outMsg = getHelpMsg();
-        sendMessage(outMsg);
+        outMsg = helpMsg();
         break;
+
       case "yomomma":
-        outMsg = await getYoMommaJoke();
-        sendMessage(outMsg);
+        outMsg = await yoMommaJoke();
         break;
+
       case "set":
-        outMsg = await setDefaultTeam(PARAMETER);
-        sendMessage(outMsg);
+        outMsg = await setDEFAULT_TEAM(PARAMETER);
         break;
+
       case "prev":
-        outMsg = await getPrevMatch(PARAMETER);
-        sendMessage(outMsg);
+        outMsg = await prevMatch(PARAMETER);
         break;
+
       case "next":
-        outMsg = await getNextMatch(PARAMETER);
-        sendMessage(outMsg);
+        outMsg = await nextMatch(PARAMETER);
         break;
-      case "upcoming":
-        outMsg = await getUpcomingMatches(PARAMETER);
-        sendMessage(outMsg);
+
+      case "prevEvent":
+        outMsg = await prevEvent(PARAMETER);
         break;
+
+      case "nextEvent":
+        outMsg = await nextEvent(PARAMETER);
+        break;
+
       case "wl":
-        outMsg = await getWinLoss(PARAMETER);
-        sendMessage(outMsg);
+        outMsg = await winLoss(PARAMETER, PARAMETER2);
         break;
+
       case "prefix":
         outMsg = await setPrefix(PARAMETER);
-        sendMessage(outMsg);
         break;
+
       default:
-        sendMessage("Unknown command");
+        outMsg = "Unknown command";
         break;
     }
+  }
+  if (typeof outMsg == "string") {
+    sendMessage(outMsg);
+  } else {
+    sendMessage("", outMsg);
   }
   //<@URY21QNTD> test
   //<@URY4QJR0T> frc
@@ -88,136 +145,176 @@ var handleMessage = async message => {
 };
 
 // HELPER FUNCTIONS
-var sendMessage = message => {
-  app.postMessageToChannel("general", `${message}`);
+
+var sendMessage = (message, params) => {
+  app.postMessageToChannel("general", `${message}`, params);
 };
 
-var getYoMommaJoke = async () => {
-  const res = await axios.get("https://api.yomomma.info/");
-  return res.data.joke;
+var helpMsg = () => {
+  let params = {
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: "*❓COMMAND LIST❓*"
+        }
+      },
+      {
+        type: "divider"
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `This is a list of currently available commands. Make sure you use the command prefix \`${DEFAULT_PREFIX}\` before typing in any of these commands`
+        }
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: "*help*\nReally?"
+        }
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text:
+            "*prefix [prefix]*\n `prefix` is *required*.\n Sets the command prefix for this bot."
+        }
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text:
+            "*set [team]*\n `team` is *required*.\n Sets the `defaultTeam` for this bot"
+        }
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text:
+            "*next [team]*\n `team` defaults to current `defaultTeam`.\n Gets the upcoming match"
+        }
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text:
+            "*prev [team]*\n `team` defaults to current `defaultTeam`.\n Gets the most recent match."
+        }
+      },
+
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text:
+            "*nextEvent [team]*\n `team` defaults to current `defaultTeam`.\n Gets the upcoming event."
+        }
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text:
+            "*prevEvent [team]*\n `team` defaults to current `defaultTeam`.\n Gets the most recent event."
+        }
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text:
+            "*wl [team] [year]*\n `team` defaults to current `defaultTeam`.\n `year` defaults to all years.\n Gets win loss of given team during a specific year."
+        }
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: "*yomomma*\nHaha, funny joke."
+        }
+      },
+      {
+        type: "divider"
+      },
+      {
+        type: "context",
+        elements: [
+          {
+            type: "mrkdwn",
+            text: `❓Get help at any time with \`${DEFAULT_PREFIX} help\``
+          }
+        ]
+      }
+    ]
+  };
+  return params;
 };
 
-var getHelpMsg = () => {
-  return "What do you need help with dummmy?";
+var yoMommaJoke = async () => {
+  const joke = await api.getYoMommaJoke;
+  return joke;
 };
+
+var prevMatch = async (team = DEFAULT_TEAM) => {
+  return;
+};
+var nextMatch = async (team = DEFAULT_TEAM) => {
+  return;
+};
+var prevEvent = async (team = DEFAULT_TEAM) => {
+  const payload = await api.getPrevEvent(team);
+  if (payload.status == "OK") {
+    return payload.data;
+  } else {
+    return handleError(payload.data);
+  }
+};
+var nextEvent = async (team = DEFAULT_TEAM) => {
+  const payload = await api.getNextEvent(team);
+  if (payload.status == "OK") {
+    return payload.data;
+  } else {
+    return handleError(payload.data);
+  }
+};
+var winLoss = async (team = DEFAULT_TEAM, year = "all") => {
+ const payload = await api.getWinLoss(team,year);
+ if(payload.status == "OK"){
+     return payload.data;
+ } else {
+     return handleError(payload.data);
+ }
+};
+
+// Setters
 
 var setPrefix = prefix => {
   if (prefix != undefined && prefix != null) {
-    DEFAULTPREFIX = prefix;
+    DEFAULT_PREFIX = prefix;
     return `Success! Bot prefix set to '${prefix}'`;
   }
-  return "Error, not a valid prefix value";
+  return handleError("Error, not a valid prefix value");
 };
 
-var setDefaultTeam = team => {
-  DEFAULTTEAM = team;
-  return true;
+var setDEFAULT_TEAM = team => {
+  DEFAULT_TEAM = team;
+  return `Success! \`defaultTeam\` set to '${team}'`;
 };
 
-var getNextMatch = async (team = DEFAULTTEAM) => {
-  //Gets the next upcomming match statistics and displays it
-  // should also integrate with custom google sheets
+// Error handling
 
-  return "next";
-};
-
-var getPrevMatch = async (team = DEFAULTTEAM) => {
-  //Gets the last match statistics and displays it
-  return "prev";
-};
-var getUpcomingMatches = async (team = DEFAULTTEAM) => {
-  //All matches involving team X for the next event
-  return "upcoming";
-};
-
-var getWinLoss = async (team = DEFAULTTEAM) => {
-  //Get all the matches of a team and compare how many wins and losses they've had
-  //Optional year?
-  const res = await axios.get(
-    `https://www.thebluealliance.com/api/v3/team/frc${team}/years_participated`,
-    (header = BLUE_ALLIANCE_CONFIG)
-  );
-
-  return res.data;
-};
-
-var error = errorMsg => {
-  return `Error! Something went wrong, please check ${DEFAULTPREFIX} help for correct usage or check my logs to see what happened. Error message: ${errorMsg}`;
+var handleError = errorMsg => {
+  console.log(errorMsg);
+  errorMsg = JSON.stringify(errorMsg);
+  return `Error! Something went wrong, please check \`${DEFAULT_PREFIX} help\` for correct usage or check my logs to see what happened. \nError message: \`${errorMsg}\``;
 };
 
 //BLUE_ALLIANCE_API_KEY
-
-// attachments: [
-//     {
-//         "mrkdwn_in": ["text"],
-//         "color": "#36a64f",
-//         "pretext": "Optional pre-text that appears above the attachment block",
-//         "author_name": "author_name",
-//         "author_link": "http://flickr.com/bobby/",
-//         "author_icon": "https://placeimg.com/16/16/people",
-//         "title": "title",
-//         "title_link": "https://api.slack.com/",
-//         "text": "Optional `text` that appears within the attachment",
-//         "fields": [
-//             {
-//                 "title": "A field's title",
-//                 "value": "This field's value",
-//                 "short": false
-//             },
-//             {
-//                 "title": "A short field's title",
-//                 "value": "A short field's value",
-//                 "short": true
-//             },
-//             {
-//                 "title": "A second short field's title",
-//                 "value": "A second short field's value",
-//                 "short": true
-//             }
-//         ],
-//         "thumb_url": "http://placekitten.com/g/200/200",
-//         "footer": "footer",
-//         "footer_icon": "https://platform.slack-edge.com/img/default_application_icon.png",
-//         "ts": 123456789
-//     }
-// ]
-
-// Test buttons
-
-// "text": "Would you like to play a game?",
-//         "attachments": [
-//             {
-//                 "text": "Choose a game to play",
-//                 "fallback": "You are unable to choose a game",
-//                 "callback_id": "wopr_game",
-//                 "color": "#3AA3E3",
-//                 "attachment_type": "default",
-//                 "actions": [
-//                     {
-//                         "name": "game",
-//                         "text": "Chess",
-//                         "type": "button",
-//                         "value": "chess"
-//                     },
-//                     {
-//                         "name": "game",
-//                         "text": "Falken's Maze",
-//                         "type": "button",
-//                         "value": "maze"
-//                     },
-//                     {
-//                         "name": "game",
-//                         "text": "Thermonuclear War",
-//                         "style": "danger",
-//                         "type": "button",
-//                         "value": "war",
-//                         "confirm": {
-//                             "title": "Are you sure?",
-//                             "text": "Wouldn't you prefer a good game of chess?",
-//                             "ok_text": "Yes",
-//                             "dismiss_text": "No"
-//                         }
-//                     }
-//                 ]
-//             }
-//         ]
