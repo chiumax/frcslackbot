@@ -71,7 +71,7 @@ app.on("start", () => {
     ]
   };
 
-  app.postMessageToChannel("general", "What's up laddies!", params);
+  app.postMessageToChannel("random", "What's up laddies!", params);
 });
 
 // Error Handler
@@ -156,7 +156,7 @@ var handleMessage = async message => {
 // HELPER FUNCTIONS
 
 var sendMessage = (message, params) => {
-  app.postMessageToChannel("general", `${message}`, params);
+  app.postMessageToChannel("random", `${message}`, params);
 };
 
 var helpMsg = () => {
